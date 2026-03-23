@@ -1,0 +1,12 @@
+{
+  "name": "screenskip",
+  "version": "0.0.0",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "workspaces": [
+    "packages/*"
+  ],
+  "dependencies": {
+    "dotenv": "^17.3.1"
+  }
+}
