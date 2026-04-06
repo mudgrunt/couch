@@ -1,87 +1,87 @@
 import { Insertable, Kysely, sql, Updateable } from "kysely";
 import { DB } from "../db/schema";
 
-export class AccountRepository {
+export class CollectionRepository {
   constructor(private readonly db: Kysely<DB>) {}
 
   // CREATE
-  // Create Account
-  public async create(values: Insertable<DB["account"]>) {
-    const [account] = await this.db
-      .insertInto("account")
+  // Create Collection
+  public async create(values: Insertable<DB["collection"]>) {
+    const [collection] = await this.db
+      .insertInto("collection")
       .values(values)
       .returningAll()
       .execute();
-    return account;
+    return collection;
   }
 
   // READ
-  // Get All Accounts
+  // Get All Collections
   public async getAll() {
-    const accounts = await this.db
-      .selectFrom("account")
+    const collections = await this.db
+      .selectFrom("collection")
       .where("deleted_at", "is", null)
       .selectAll()
       .execute();
-    return accounts;
+    return collections;
   }
 
-  // Get Account by ID
+  // Get Collection by ID
   public async getById(id: number) {
-    const account = await this.db
-      .selectFrom("account")
+    const collection = await this.db
+      .selectFrom("collection")
       .selectAll()
       .where("id", "=", id)
       .where("deleted_at", "is", null)
       .executeTakeFirst();
-    return account;
+    return collection;
   }
 
-  // Get Deleted Accounts
+  // Get Deleted Collections
   public async getDeleted() {
-    const accounts = await this.db
-      .selectFrom("account")
+    const collections = await this.db
+      .selectFrom("collection")
       .selectAll()
       .where("deleted_at", "is not", null)
       .execute();
-    return accounts;
+    return collections;
   }
 
   // UPDATE
-  // Update Account
-  public async update(id: number, values: Updateable<DB["account"]>) {
-    const [account] = await this.db
-      .updateTable("account")
+  // Update Collection
+  public async update(id: number, values: Updateable<DB["collection"]>) {
+    const [collection] = await this.db
+      .updateTable("collection")
       .set(values)
       .where("id", "=", id)
       .returningAll()
       .execute();
-    return account;
+    return collection;
   }
 
   // DELETE
-  // Delete Account
+  // Delete Collection
   public async delete(id: number) {
     return await this.db
-      .updateTable("account")
+      .updateTable("collection")
       .set({ deleted_at: sql`CURRENT_TIMESTAMP` })
       .where("id", "=", id)
       .executeTakeFirst();
   }
 
-  // Restore Account
+  // Restore Collection
   public async restore(id: number) {
     return await this.db
-      .updateTable("account")
+      .updateTable("collection")
       .set({ deleted_at: null })
       .where("id", "=", id)
       .executeTakeFirst();
   }
 
-  // Purge Account
+  // Purge Collection
   public async purge(daysOld: number) {
     return await this.db
-      .deleteFrom("account")
+      .deleteFrom("collection")
       .where(
         "deleted_at",
         "<=",

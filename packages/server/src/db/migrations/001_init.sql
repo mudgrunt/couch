@@ -1,11 +1,6 @@
 -- 001_init.sql
 -- Lookup tables
 
-CREATE TABLE accessibility_feature (
-    id INTEGER PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE COLLATE NOCASE -- e.g., 'Adjustable Difficulty', 'Subtitle Options', 'Stereo Sound', etc.
-) STRICT;
-
 CREATE TABLE account_role (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL UNIQUE COLLATE NOCASE -- e.g., 'admin', 'user', etc.
@@ -156,17 +151,33 @@ CREATE UNIQUE INDEX idx_series_name_active ON series(name COLLATE NOCASE) WHERE 
 CREATE TABLE game (
     id INTEGER PRIMARY KEY,
     title TEXT NOT NULL,
+    display_title TEXT DEFAULT NULL,
+    alias TEXT DEFAULT NULL,
     size_bytes INTEGER CHECK (size_bytes >= 0),
     description TEXT,
     release_date TEXT,
     version TEXT,
     release_status TEXT,
+    edition TEXT DEFAULT NULL,
+    install_dir TEXT DEFAULT NULL,
+    launch_target TEXT DEFAULT NULL,
     is_owned INTEGER DEFAULT 0 CHECK (is_owned IN (0,1)),
     min_players INTEGER CHECK (min_players >= 1),
     max_players INTEGER CHECK (max_players >= min_players),
     hltb_main_min INTEGER CHECK (hltb_main_min >= 0),
     hltb_main_extra_min INTEGER CHECK (hltb_main_extra_min >= 0),
     hltb_completionist_min INTEGER CHECK (hltb_completionist_min >= 0),
+    sort_title TEXT GENERATED ALWAYS AS (
+        CASE
+            WHEN LOWER(COALESCE(display_title, title)) LIKE 'the %'
+                THEN TRIM(SUBSTR(COALESCE(display_title, title), 5))
+            WHEN LOWER(COALESCE(display_title, title)) LIKE 'an %'
+                THEN TRIM(SUBSTR(COALESCE(display_title, title), 4))
+            WHEN LOWER(COALESCE(display_title, title)) LIKE 'a %'
+                THEN TRIM(SUBSTR(COALESCE(display_title, title), 3))
+            ELSE COALESCE(display_title, title)
+        END
+    ) STORED,
     updated_by INTEGER REFERENCES account(id) ON DELETE SET NULL,
     deleted_by INTEGER REFERENCES account(id) ON DELETE SET NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -175,6 +186,8 @@ CREATE TABLE game (
 ) STRICT;
 
 CREATE INDEX idx_game_title ON game(title COLLATE NOCASE);
+CREATE INDEX idx_game_display_title ON game(display_title COLLATE NOCASE);
+CREATE INDEX idx_game_sort_title ON game(sort_title COLLATE NOCASE);
 
 CREATE TABLE dlc (
     id INTEGER PRIMARY KEY,
@@ -211,13 +224,6 @@ CREATE TABLE game_achievement (
 ) STRICT;
 
 CREATE INDEX idx_gameachievements_game_id ON game_achievement(game_id);
-
-CREATE TABLE game_edition (
-    id INTEGER PRIMARY KEY,
-    game_id INTEGER NOT NULL REFERENCES game(id) ON DELETE CASCADE,
-    edition TEXT NOT NULL,
-    UNIQUE(game_id, edition COLLATE NOCASE)
-) STRICT;
 
 CREATE TABLE rating_descriptor (
     id INTEGER PRIMARY KEY,
@@ -257,14 +263,6 @@ CREATE TABLE blocked_entity (
 
 CREATE INDEX idx_blocked_entity_entity ON blocked_entity(entity_type_id, entity_id);
 
-CREATE TABLE game_accessibility_feature (
-    game_id INTEGER NOT NULL REFERENCES game(id) ON DELETE CASCADE,
-    accessibility_feature_id INTEGER NOT NULL REFERENCES accessibility_feature(id) ON DELETE CASCADE,
-    PRIMARY KEY (game_id, accessibility_feature_id)
-) STRICT, WITHOUT ROWID;
-
-CREATE INDEX idx_game_accessibility_feature_accessibility_feature_id ON game_accessibility_feature(accessibility_feature_id);
-
 CREATE TABLE game_collection (
     game_id INTEGER NOT NULL REFERENCES game(id) ON DELETE CASCADE,
     collection_id INTEGER NOT NULL REFERENCES collection(id) ON DELETE CASCADE,
@@ -280,23 +278,6 @@ CREATE TABLE game_developer (
 ) STRICT, WITHOUT ROWID;
 
 CREATE INDEX idx_game_developer_developer_id ON game_developer(developer_id);
-
-CREATE TABLE game_entry (
-    id INTEGER PRIMARY KEY,
-    game_id INTEGER NOT NULL REFERENCES game(id) ON DELETE CASCADE,
-    library_id INTEGER NOT NULL REFERENCES library(id) ON DELETE CASCADE,
-    platform_id INTEGER NOT NULL REFERENCES platform(id) ON DELETE CASCADE,
-    edition_id INTEGER REFERENCES game_edition(id) ON DELETE SET NULL,
-    is_primary INTEGER DEFAULT 0 CHECK (is_primary IN (0,1)),
-    install_dir TEXT,
-    launch_target TEXT,
-    UNIQUE(game_id, library_id, platform_id, edition_id) NULLS NOT DISTINCT
-) STRICT;
-
-CREATE INDEX idx_game_entry_game_id ON game_entry(game_id);
-CREATE INDEX idx_game_entry_library_id ON game_entry(library_id);
-CREATE INDEX idx_game_entry_platform_id ON game_entry(platform_id);
-CREATE UNIQUE INDEX idx_game_entry_primary ON game_entry(game_id) WHERE is_primary = 1;
 
 -- Store URL is implied from library + external_id
 CREATE TABLE entity_external_id (
@@ -333,6 +314,14 @@ CREATE TABLE game_genre (
 ) STRICT, WITHOUT ROWID;
 
 CREATE INDEX idx_game_genre_genre_id ON game_genre(genre_id);
+
+CREATE TABLE game_library (
+    game_id INTEGER NOT NULL REFERENCES game(id) ON DELETE CASCADE,
+    library_id INTEGER NOT NULL REFERENCES library(id) ON DELETE CASCADE,
+    PRIMARY KEY (game_id, library_id)
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX idx_game_library_library_id ON game_library(library_id);
 
 CREATE TABLE game_locale (
     game_id INTEGER NOT NULL REFERENCES game(id) ON DELETE CASCADE,
@@ -373,6 +362,14 @@ CREATE TABLE game_publisher (
 ) STRICT, WITHOUT ROWID;
 
 CREATE INDEX idx_game_publisher_publisher_id ON game_publisher(publisher_id);
+
+CREATE TABLE game_platform (
+    game_id INTEGER NOT NULL REFERENCES game(id) ON DELETE CASCADE,
+    platform_id INTEGER NOT NULL REFERENCES platform(id) ON DELETE CASCADE,
+    PRIMARY KEY (game_id, platform_id)
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX idx_game_platform_platform_id ON game_platform(platform_id);
 
 CREATE TABLE game_rating_descriptor (
     game_id INTEGER NOT NULL REFERENCES game(id) ON DELETE CASCADE,
@@ -443,8 +440,6 @@ CREATE TABLE account_game (
     id INTEGER PRIMARY KEY,
     account_id INTEGER NOT NULL REFERENCES account(id) ON DELETE CASCADE,
     game_id INTEGER NOT NULL REFERENCES game(id) ON DELETE CASCADE,
-    title TEXT,
-    alias TEXT,
     notes TEXT,
     score REAL CHECK (score IS NULL OR (score >= 0 AND score <= 100)),
     is_favorite INTEGER DEFAULT 0 CHECK (is_favorite IN (0,1)),
@@ -479,10 +474,217 @@ CREATE TABLE account_parental_control (
     enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1))
 ) STRICT, WITHOUT ROWID;
 
+-- Views
+
+CREATE VIEW game_detail_view AS
+SELECT
+    g.id,
+    g.title,
+    g.display_title,
+    g.alias,
+    g.size_bytes,
+    g.description,
+    g.release_date,
+    g.version,
+    g.release_status,
+    g.is_owned,
+    g.min_players,
+    g.max_players,
+    g.hltb_main_min,
+    g.hltb_main_extra_min,
+    g.hltb_completionist_min,
+    g.edition,
+    g.install_dir,
+    g.launch_target,
+    g.created_at,
+    g.updated_at,
+    COALESCE((
+        SELECT json_group_array(json_object('id', d.id, 'name', d.name))
+        FROM game_developer gd JOIN developer d ON gd.developer_id = d.id
+        WHERE gd.game_id = g.id
+    ), json('[]')) AS developers,
+    COALESCE((
+        SELECT json_group_array(json_object('id', p.id, 'name', p.name))
+        FROM game_publisher gp JOIN publisher p ON gp.publisher_id = p.id
+        WHERE gp.game_id = g.id
+    ), json('[]')) AS publishers,
+    COALESCE((
+        SELECT json_group_array(json_object('id', gen.id, 'name', gen.name))
+        FROM game_genre gg JOIN genre gen ON gg.genre_id = gen.id
+        WHERE gg.game_id = g.id
+    ), json('[]')) AS genres,
+    COALESCE((
+        SELECT json_group_array(json_object('id', t.id, 'name', t.name))
+        FROM game_tag gt JOIN tag t ON gt.tag_id = t.id
+        WHERE gt.game_id = g.id
+    ), json('[]')) AS tags,
+    COALESCE((
+        SELECT json_group_array(json_object('id', f.id, 'name', f.name))
+        FROM game_feature gf JOIN feature f ON gf.feature_id = f.id
+        WHERE gf.game_id = g.id
+    ), json('[]')) AS features,
+    COALESCE((
+        SELECT json_group_array(json_object('id', fr.id, 'name', fr.name))
+        FROM game_franchise gfr JOIN franchise fr ON gfr.franchise_id = fr.id
+        WHERE gfr.game_id = g.id
+    ), json('[]')) AS franchises,
+    COALESCE((
+        SELECT json_group_array(json_object('id', s.id, 'name', s.name, 'series_order', gs.series_order))
+        FROM game_series gs JOIN series s ON gs.series_id = s.id
+        WHERE gs.game_id = g.id
+    ), json('[]')) AS series,
+    COALESCE((
+        SELECT json_group_array(json_object('id', r.id, 'code', r.code, 'name', r.name))
+        FROM game_region gr JOIN region r ON gr.region_id = r.id
+        WHERE gr.game_id = g.id
+    ), json('[]')) AS regions,
+    COALESCE((
+        SELECT json_group_array(json_object(
+            'id', dlc.id,
+            'title', dlc.title,
+            'description', dlc.description,
+            'release_date', dlc.release_date,
+            'is_owned', dlc.is_owned,
+            'size_bytes', dlc.size_bytes
+        ))
+        FROM dlc dlc
+        WHERE dlc.game_id = g.id AND dlc.deleted_at IS NULL
+    ), json('[]')) AS dlcs,
+    COALESCE((
+        SELECT json_group_array(json_object(
+            'id', ga.id,
+            'name', ga.name,
+            'description', ga.description,
+            'rarity', ga.rarity,
+            'secret', ga.secret,
+            'progress_current', ga.progress_current,
+            'progress_total', ga.progress_total,
+            'unlocked_at', ga.unlocked_at
+        ))
+        FROM game_achievement ga
+        WHERE ga.game_id = g.id
+    ), json('[]')) AS achievements,
+    COALESCE((
+        SELECT json_group_array(json_object(
+            'id', l.id,
+            'code', l.code,
+            'name', l.name,
+            'audio', gl.audio,
+            'interface', gl.interface,
+            'subtitles', gl.subtitles
+        ))
+        FROM game_locale gl JOIN locale l ON gl.locale_id = l.id
+        WHERE gl.game_id = g.id
+    ), json('[]')) AS locales,
+    COALESCE((
+        SELECT json_group_array(json_object(
+            'source', rs.name,
+            'rating', ra.name,
+            'min_age', ra.min_age
+        ))
+        FROM game_rating gra
+        JOIN rating ra ON gra.rating_id = ra.id
+        JOIN rating_source rs ON ra.source_id = rs.id
+        WHERE gra.game_id = g.id
+    ), json('[]')) AS ratings,
+    COALESCE((
+        SELECT json_group_array(json_object(
+            'source', rs.name,
+            'descriptor', rd.descriptor
+        ))
+        FROM game_rating_descriptor grd
+        JOIN rating_descriptor rd ON grd.descriptor_id = rd.id
+        JOIN rating_source rs ON rd.source_id = rs.id
+        WHERE grd.game_id = g.id
+    ), json('[]')) AS rating_descriptors,
+    COALESCE((
+        SELECT json_group_array(json_object('source', ss.name, 'score', gs2.score))
+        FROM game_score gs2 JOIN score_source ss ON gs2.source_id = ss.id
+        WHERE gs2.game_id = g.id
+    ), json('[]')) AS scores,
+    COALESCE((
+        SELECT json_group_array(json_object('id', lib.id, 'code', lib.code, 'name', lib.name))
+        FROM game_library gl2 JOIN library lib ON gl2.library_id = lib.id
+        WHERE gl2.game_id = g.id
+    ), json('[]')) AS libraries,
+    COALESCE((
+        SELECT json_group_array(json_object('id', plt.id, 'code', plt.code, 'name', plt.name))
+        FROM game_platform gp2 JOIN platform plt ON gp2.platform_id = plt.id
+        WHERE gp2.game_id = g.id
+    ), json('[]')) AS platforms,
+    COALESCE((
+        SELECT json_group_array(json_object('library', lib.code, 'external_id', eei.external_id))
+        FROM entity_external_id eei
+        JOIN library lib ON eei.library_id = lib.id
+        WHERE eei.entity_id = g.id
+            AND eei.entity_type_id = (SELECT id FROM entity_type WHERE name = 'game')
+    ), json('[]')) AS external_ids,
+    COALESCE((
+        SELECT json_group_array(json_object('type', mt.name, 'path', em.path))
+        FROM entity_media em
+        JOIN media_type mt ON em.media_type_id = mt.id
+        WHERE em.entity_id = g.id
+            AND em.entity_type_id = (SELECT id FROM entity_type WHERE name = 'game')
+    ), json('[]')) AS media,
+    COALESCE((
+        SELECT json_group_array(json_object(
+            'currency_code', c.code,
+            'currency_symbol', c.symbol,
+            'price', ep.price,
+            'updated_at', ep.updated_at
+        ))
+        FROM entity_price ep
+        JOIN currency c ON ep.currency_id = c.id
+        WHERE ep.entity_id = g.id
+            AND ep.entity_type_id = (SELECT id FROM entity_type WHERE name = 'game')
+    ), json('[]')) AS prices
+FROM game g
+WHERE g.deleted_at IS NULL;
+
+CREATE VIEW game_grid_view AS
+SELECT
+    g.id,
+    g.title,
+    g.display_title,
+    g.sort_title,
+    (
+        SELECT em.path
+        FROM entity_media em
+        JOIN media_type mt ON em.media_type_id = mt.id
+        WHERE em.entity_id = g.id
+            AND em.entity_type_id = (SELECT id FROM entity_type WHERE name = 'game')
+            AND mt.name = 'cover'
+        LIMIT 1
+    ) AS cover
+FROM game g
+WHERE g.deleted_at IS NULL;
+
+CREATE VIEW game_list_view AS
+SELECT
+    g.id,
+    g.title,
+    g.display_title,
+    g.sort_title
+FROM game g
+WHERE g.deleted_at IS NULL;
+
+CREATE VIEW dlc_list_view AS
+SELECT
+    dlc.id,
+    dlc.game_id,
+    dlc.title,
+    dlc.release_date
+FROM dlc
+WHERE dlc.deleted_at IS NULL;
+
+-- Full-Text Search
+
 CREATE VIEW game_search_view AS
 SELECT
     g.id AS id,
     COALESCE(g.title, '') AS title,
+    COALESCE(g.display_title, '') AS display_title,
+    COALESCE(g.alias, '') AS alias,
     COALESCE((
         SELECT GROUP_CONCAT(DISTINCT f.name)
         FROM game_franchise gf
@@ -542,6 +744,8 @@ WHERE g.deleted_at IS NULL;
 
 CREATE VIRTUAL TABLE game_search USING fts5(
     title,
+    display_title,
+    alias,
     franchise,
     series,
     developers,
@@ -553,16 +757,6 @@ CREATE VIRTUAL TABLE game_search USING fts5(
     locales,
     external_id,
     content='game_search_view',
-    content_rowid='id'
-);
-
-CREATE VIRTUAL TABLE account_game_search USING fts5(
-    account_id UNINDEXED,
-    game_id UNINDEXED,
-    title,
-    alias,
-    notes,
-    content='account_game',
     content_rowid='id'
 );
 

@@ -5,14 +5,15 @@
 
 import type { ColumnType } from "kysely";
 
-export type Generated<T> =
-  T extends ColumnType<infer S, infer I, infer U>
-    ? ColumnType<S, I | undefined, U>
-    : ColumnType<T, T | undefined, T>;
+export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
+  ? ColumnType<S, I | undefined, U>
+  : ColumnType<T, T | undefined, T>;
 
-export interface AccessibilityFeature {
+export interface _Migrations {
+  applied_at: Generated<string>;
   id: Generated<number | null>;
   name: string;
+  version: number;
 }
 
 export interface Account {
@@ -24,6 +25,35 @@ export interface Account {
   role_id: number;
   updated_at: Generated<string | null>;
   username: string;
+}
+
+export interface AccountGame {
+  account_id: number;
+  completion_date: string | null;
+  game_id: number;
+  id: Generated<number | null>;
+  is_favorite: Generated<number | null>;
+  is_hidden: Generated<number | null>;
+  last_played: string | null;
+  notes: string | null;
+  score: number | null;
+  status_id: number | null;
+  time_played_min: number | null;
+}
+
+export interface AccountGameSession {
+  account_id: number;
+  ended_at: string | null;
+  game_id: number;
+  id: Generated<number | null>;
+  started_at: Generated<string>;
+}
+
+export interface AccountParentalControl {
+  account_id: Generated<number>;
+  enabled: Generated<number>;
+  max_age: number;
+  max_day_duration_min: number | null;
 }
 
 export interface AccountRole {
@@ -84,6 +114,35 @@ export interface Dlc {
   updated_by: number | null;
 }
 
+export interface DlcListView {
+  game_id: number | null;
+  id: number | null;
+  release_date: string | null;
+  title: string | null;
+}
+
+export interface EntityExternalId {
+  entity_id: number;
+  entity_type_id: number;
+  external_id: string;
+  library_id: number;
+}
+
+export interface EntityMedia {
+  entity_id: number;
+  entity_type_id: number;
+  media_type_id: number;
+  path: string;
+}
+
+export interface EntityPrice {
+  currency_id: number;
+  entity_id: number;
+  entity_type_id: number;
+  price: number;
+  updated_at: Generated<string | null>;
+}
+
 export interface EntityType {
   id: Generated<number | null>;
   name: string;
@@ -106,15 +165,20 @@ export interface Franchise {
 }
 
 export interface Game {
+  alias: Generated<string | null>;
   created_at: Generated<string | null>;
   deleted_at: Generated<string | null>;
   deleted_by: number | null;
   description: string | null;
+  display_title: Generated<string | null>;
+  edition: Generated<string | null>;
   hltb_completionist_min: number | null;
   hltb_main_extra_min: number | null;
   hltb_main_min: number | null;
   id: Generated<number | null>;
+  install_dir: Generated<string | null>;
   is_owned: Generated<number | null>;
+  launch_target: Generated<string | null>;
   max_players: number | null;
   min_players: number | null;
   release_date: string | null;
@@ -124,11 +188,6 @@ export interface Game {
   updated_at: Generated<string | null>;
   updated_by: number | null;
   version: string | null;
-}
-
-export interface GameAccessibilityFeature {
-  accessibility_feature_id: number;
-  game_id: number;
 }
 
 export interface GameAchievement {
@@ -148,15 +207,190 @@ export interface GameCollection {
   game_id: number;
 }
 
+export interface GameDetailView {
+  achievements: string | null;
+  alias: string | null;
+  created_at: string | null;
+  description: string | null;
+  developers: string | null;
+  display_title: string | null;
+  dlcs: string | null;
+  edition: string | null;
+  external_ids: string | null;
+  features: string | null;
+  franchises: string | null;
+  genres: string | null;
+  hltb_completionist_min: number | null;
+  hltb_main_extra_min: number | null;
+  hltb_main_min: number | null;
+  id: number | null;
+  install_dir: string | null;
+  is_owned: number | null;
+  launch_target: string | null;
+  libraries: string | null;
+  locales: string | null;
+  max_players: number | null;
+  media: string | null;
+  min_players: number | null;
+  platforms: string | null;
+  prices: string | null;
+  publishers: string | null;
+  rating_descriptors: string | null;
+  ratings: string | null;
+  regions: string | null;
+  release_date: string | null;
+  release_status: string | null;
+  scores: string | null;
+  series: string | null;
+  size_bytes: number | null;
+  tags: string | null;
+  title: string | null;
+  updated_at: string | null;
+  version: string | null;
+}
+
 export interface GameDeveloper {
   developer_id: number;
   game_id: number;
 }
 
-export interface GameEdition {
-  edition: string;
+export interface GameFeature {
+  feature_id: number;
   game_id: number;
+}
+
+export interface GameFranchise {
+  franchise_id: number;
+  game_id: number;
+}
+
+export interface GameGenre {
+  game_id: number;
+  genre_id: number;
+}
+
+export interface GameGridView {
+  cover: string | null;
+  display_title: string | null;
+  id: number | null;
+  sort_title: string | null;
+  title: string | null;
+}
+
+export interface GameLibrary {
+  game_id: number;
+  library_id: number;
+}
+
+export interface GameListView {
+  display_title: string | null;
+  id: number | null;
+  sort_title: string | null;
+  title: string | null;
+}
+
+export interface GameLocale {
+  audio: Generated<number>;
+  game_id: number;
+  interface: Generated<number>;
+  locale_id: number;
+  subtitles: Generated<number>;
+}
+
+export interface GamePlatform {
+  game_id: number;
+  platform_id: number;
+}
+
+export interface GamePublisher {
+  game_id: number;
+  publisher_id: number;
+}
+
+export interface GameRating {
+  game_id: number;
+  rating_id: number;
+}
+
+export interface GameRatingDescriptor {
+  descriptor_id: number;
+  game_id: number;
+}
+
+export interface GameRegion {
+  game_id: number;
+  region_id: number;
+}
+
+export interface GameScore {
+  game_id: number;
+  score: number;
+  source_id: number;
+}
+
+export interface GameSearch {
+  alias: string | null;
+  description: string | null;
+  developers: string | null;
+  display_title: string | null;
+  dlc_titles: string | null;
+  external_id: string | null;
+  franchise: string | null;
+  genres: string | null;
+  locales: string | null;
+  publishers: string | null;
+  series: string | null;
+  tags: string | null;
+  title: string | null;
+}
+
+export interface GameSearchConfig {
+  k: string;
+  v: string | null;
+}
+
+export interface GameSearchData {
+  block: Buffer | null;
   id: Generated<number | null>;
+}
+
+export interface GameSearchDocsize {
+  id: Generated<number | null>;
+  sz: Buffer | null;
+}
+
+export interface GameSearchIdx {
+  pgno: string | null;
+  segid: string;
+  term: string;
+}
+
+export interface GameSearchView {
+  alias: string | null;
+  description: string | null;
+  developers: string | null;
+  display_title: string | null;
+  dlc_titles: string | null;
+  external_id: string | null;
+  franchise: string | null;
+  genres: string | null;
+  id: number | null;
+  locales: string | null;
+  publishers: string | null;
+  series: string | null;
+  tags: string | null;
+  title: string | null;
+}
+
+export interface GameSeries {
+  game_id: number;
+  series_id: number;
+  series_order: number | null;
+}
+
+export interface GameTag {
+  game_id: number;
+  tag_id: number;
 }
 
 export interface Genre {
@@ -179,11 +413,6 @@ export interface Locale {
 export interface MediaType {
   id: Generated<number | null>;
   name: string;
-}
-
-export interface Migrations {
-  applied_at: Generated<string | null>;
-  name: string | null;
 }
 
 export interface Platform {
@@ -248,8 +477,11 @@ export interface Tag {
 }
 
 export interface DB {
-  accessibility_feature: AccessibilityFeature;
+  _migrations: _Migrations;
   account: Account;
+  account_game: AccountGame;
+  account_game_session: AccountGameSession;
+  account_parental_control: AccountParentalControl;
   account_role: AccountRole;
   account_schedule: AccountSchedule;
   blocked_entity: BlockedEntity;
@@ -257,20 +489,43 @@ export interface DB {
   currency: Currency;
   developer: Developer;
   dlc: Dlc;
+  dlc_list_view: DlcListView;
+  entity_external_id: EntityExternalId;
+  entity_media: EntityMedia;
+  entity_price: EntityPrice;
   entity_type: EntityType;
   feature: Feature;
   franchise: Franchise;
   game: Game;
-  game_accessibility_feature: GameAccessibilityFeature;
   game_achievement: GameAchievement;
   game_collection: GameCollection;
+  game_detail_view: GameDetailView;
   game_developer: GameDeveloper;
-  game_edition: GameEdition;
+  game_feature: GameFeature;
+  game_franchise: GameFranchise;
+  game_genre: GameGenre;
+  game_grid_view: GameGridView;
+  game_library: GameLibrary;
+  game_list_view: GameListView;
+  game_locale: GameLocale;
+  game_platform: GamePlatform;
+  game_publisher: GamePublisher;
+  game_rating: GameRating;
+  game_rating_descriptor: GameRatingDescriptor;
+  game_region: GameRegion;
+  game_score: GameScore;
+  game_search: GameSearch;
+  game_search_config: GameSearchConfig;
+  game_search_data: GameSearchData;
+  game_search_docsize: GameSearchDocsize;
+  game_search_idx: GameSearchIdx;
+  game_search_view: GameSearchView;
+  game_series: GameSeries;
+  game_tag: GameTag;
   genre: Genre;
   library: Library;
   locale: Locale;
   media_type: MediaType;
-  migrations: Migrations;
   platform: Platform;
   publisher: Publisher;
   rating: Rating;

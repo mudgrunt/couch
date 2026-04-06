@@ -2,7 +2,7 @@ import "dotenv/config";
 import app from "./src/app";
 import { config } from "./src/config";
 import { logger } from "./src/utils/logger";
-import { runMigrations } from "./src/db/migrate";
+import { runMigrations } from "../../scripts/migrate";
 
 async function start() {
   try {
