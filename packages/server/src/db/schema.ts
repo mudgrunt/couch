@@ -272,7 +272,10 @@ export interface GameGenre {
 export interface GameGridView {
   cover: string | null;
   display_title: string | null;
+  hltb_main_min: number | null;
   id: number | null;
+  release_date: string | null;
+  size_bytes: number | null;
   sort_title: string | null;
   title: string | null;
 }
@@ -284,7 +287,10 @@ export interface GameLibrary {
 
 export interface GameListView {
   display_title: string | null;
+  hltb_main_min: number | null;
   id: number | null;
+  release_date: string | null;
+  size_bytes: number | null;
   sort_title: string | null;
   title: string | null;
 }

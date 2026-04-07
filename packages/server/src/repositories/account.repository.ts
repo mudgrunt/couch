@@ -89,4 +89,80 @@ export class AccountRepository {
       )
       .execute();
   }
+
+  // PARENTAL CONTROLS
+  // Get Parental Control
+  public async getParentalControl(accountId: number) {
+    return await this.db
+      .selectFrom("account_parental_control")
+      .selectAll()
+      .where("account_id", "=", accountId)
+      .executeTakeFirst();
+  }
+
+  // Upsert Parental Control
+  public async upsertParentalControl(
+    accountId: number,
+    values: Omit<Insertable<DB["account_parental_control"]>, "account_id">,
+  ) {
+    const [result] = await this.db
+      .insertInto("account_parental_control")
+      .values({ account_id: accountId, ...values })
+      .onConflict((oc) => oc.column("account_id").doUpdateSet(values))
+      .returningAll()
+      .execute();
+    return result;
+  }
+
+  // Delete Parental Control
+  public async deleteParentalControl(accountId: number) {
+    return await this.db
+      .deleteFrom("account_parental_control")
+      .where("account_id", "=", accountId)
+      .executeTakeFirst();
+  }
+
+  // SCHEDULES
+  // Get Schedules
+  public async getSchedules(accountId: number) {
+    return await this.db
+      .selectFrom("account_schedule")
+      .selectAll()
+      .where("account_id", "=", accountId)
+      .orderBy("day_of_week")
+      .orderBy("allow_start_min")
+      .execute();
+  }
+
+  // Create Schedule
+  public async createSchedule(values: Insertable<DB["account_schedule"]>) {
+    const [schedule] = await this.db
+      .insertInto("account_schedule")
+      .values(values)
+      .returningAll()
+      .execute();
+    return schedule;
+  }
+
+  // Update Schedule
+  public async updateSchedule(
+    id: number,
+    values: Updateable<DB["account_schedule"]>,
+  ) {
+    const [schedule] = await this.db
+      .updateTable("account_schedule")
+      .set(values)
+      .where("id", "=", id)
+      .returningAll()
+      .execute();
+    return schedule;
+  }
+
+  // Delete Schedule
+  public async deleteSchedule(id: number) {
+    return await this.db
+      .deleteFrom("account_schedule")
+      .where("id", "=", id)
+      .executeTakeFirst();
+  }
 }

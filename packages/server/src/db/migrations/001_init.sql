@@ -647,6 +647,9 @@ SELECT
     g.title,
     g.display_title,
     g.sort_title,
+    g.release_date,
+    g.size_bytes,
+    g.hltb_main_min,
     (
         SELECT em.path
         FROM entity_media em
@@ -664,7 +667,10 @@ SELECT
     g.id,
     g.title,
     g.display_title,
-    g.sort_title
+    g.sort_title,
+    g.release_date,
+    g.size_bytes,
+    g.hltb_main_min
 FROM game g
 WHERE g.deleted_at IS NULL;
 
