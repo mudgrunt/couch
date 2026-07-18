@@ -1,3 +1,19 @@
 {
-  "name": "@screenskip/native"
+  "name": "@screenskip/native",
+  "version": "0.1.0",
+  "description": "Native addon for game capture",
+  "main": "dist/index.js",
+  "scripts": {
+    "build:addon": "cmake-js compile \"--CDCMAKE_C_COMPILER=C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe\" \"--CDCMAKE_CXX_COMPILER=C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe\"",
+    "build:ts": "tsc",
+    "build": "npm run build:addon && npm run build:ts"
+  },
+  "dependencies": {
+    "node-addon-api": "^8.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "cmake-js": "^8.0.0",
+    "typescript": "^5.0.0"
+  }
 }

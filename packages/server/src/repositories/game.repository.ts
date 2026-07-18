@@ -1,7 +1,7 @@
 import { Insertable, Kysely, sql, Updateable } from "kysely";
 import { DB } from "../db/schema";
 
-interface GameQueryOptions {
+export interface GameQueryOptions {
   // Filters
   genreIds?: number[];
   platformIds?: number[];
@@ -187,6 +187,122 @@ export class GameRepository {
   // Create Game
   public async create(values: Insertable<DB["game"]>) {
     return await this.db.insertInto("game").values(values).execute();
+  }
+
+  // Import ROM — no external_id, dedup by launch_target
+  public async importRom(input: {
+    title: string;
+    launchTarget: string;
+    installDir: string;
+    sizeBytes: number;
+    libraryId: number;
+    platformId: number;
+  }): Promise<"imported" | "skipped"> {
+    const existing = await this.db
+      .selectFrom("game")
+      .select("id")
+      .where("launch_target", "=", input.launchTarget)
+      .where("deleted_at", "is", null)
+      .executeTakeFirst();
+
+    if (existing) return "skipped";
+
+    const { insertId } = await this.db
+      .insertInto("game")
+      .values({
+        title: input.title,
+        launch_target: input.launchTarget,
+        install_dir: input.installDir,
+        size_bytes: input.sizeBytes,
+        is_owned: 1,
+      })
+      .executeTakeFirstOrThrow();
+
+    const gameId = Number(insertId);
+
+    await this.db
+      .insertInto("game_library")
+      .values({ game_id: gameId, library_id: input.libraryId })
+      .onConflict((oc) => oc.doNothing())
+      .execute();
+
+    await this.db
+      .insertInto("game_platform")
+      .values({ game_id: gameId, platform_id: input.platformId })
+      .onConflict((oc) => oc.doNothing())
+      .execute();
+
+    return "imported";
+  }
+
+  // Import Game
+  public async import(input: {
+    externalId: string;
+    libraryId: number;
+    name: string;
+    installDir: string;
+    launchTarget: string;
+    sizeBytes: number;
+  }): Promise<"imported" | "updated"> {
+    const GAME_ENTITY_TYPE_ID = 1;
+
+    return await this.db.transaction().execute(async (trx) => {
+      const existing = await trx
+        .selectFrom("entity_external_id")
+        .innerJoin("game", "game.id", "entity_external_id.entity_id")
+        .select("entity_external_id.entity_id as gameId")
+        .where("entity_external_id.external_id", "=", input.externalId)
+        .where("entity_external_id.library_id", "=", input.libraryId)
+        .where("entity_external_id.entity_type_id", "=", GAME_ENTITY_TYPE_ID)
+        .where("game.deleted_at", "is", null)
+        .executeTakeFirst();
+
+      if (existing) {
+        await trx
+          .updateTable("game")
+          .set({
+            title: input.name,
+            install_dir: input.installDir,
+            launch_target: input.launchTarget,
+            size_bytes: input.sizeBytes,
+            updated_at: sql`CURRENT_TIMESTAMP`,
+          })
+          .where("id", "=", existing.gameId)
+          .execute();
+        return "updated";
+      }
+
+      const { insertId } = await trx
+        .insertInto("game")
+        .values({
+          title: input.name,
+          install_dir: input.installDir,
+          launch_target: input.launchTarget,
+          size_bytes: input.sizeBytes,
+          is_owned: 1,
+        })
+        .executeTakeFirstOrThrow();
+
+      const gameId = Number(insertId);
+
+      await trx
+        .insertInto("entity_external_id")
+        .values({
+          entity_id: gameId,
+          library_id: input.libraryId,
+          entity_type_id: GAME_ENTITY_TYPE_ID,
+          external_id: input.externalId,
+        })
+        .execute();
+
+      await trx
+        .insertInto("game_library")
+        .values({ game_id: gameId, library_id: input.libraryId })
+        .onConflict((oc) => oc.doNothing())
+        .execute();
+
+      return "imported";
+    });
   }
 
   // READ
@@ -558,6 +674,117 @@ export class GameRepository {
         "deleted_at",
         "<=",
         sql<string>`datetime('now', ${sql.lit(`-${daysOld} days`)})`,
+      )
+      .execute();
+  }
+
+  // Get Steam App ID for a game
+  public async getSteamAppId(gameId: number): Promise<string | null> {
+    const STEAM_LIBRARY_ID = 1;
+    const GAME_ENTITY_TYPE_ID = 1;
+    const row = await this.db
+      .selectFrom("entity_external_id")
+      .select("external_id")
+      .where("entity_id", "=", gameId)
+      .where("library_id", "=", STEAM_LIBRARY_ID)
+      .where("entity_type_id", "=", GAME_ENTITY_TYPE_ID)
+      .executeTakeFirst();
+    return row?.external_id ?? null;
+  }
+
+  // Get GOG Product ID for a game
+  public async getGogProductId(gameId: number): Promise<string | null> {
+    const GOG_LIBRARY_ID = 2;
+    const GAME_ENTITY_TYPE_ID = 1;
+    const row = await this.db
+      .selectFrom("entity_external_id")
+      .select("external_id")
+      .where("entity_id", "=", gameId)
+      .where("library_id", "=", GOG_LIBRARY_ID)
+      .where("entity_type_id", "=", GAME_ENTITY_TYPE_ID)
+      .executeTakeFirst();
+    return row?.external_id ?? null;
+  }
+
+  // Upsert cover art URL for a game
+  public async upsertCover(gameId: number, path: string): Promise<void> {
+    const mediaType = await this.db
+      .selectFrom("media_type")
+      .select("id")
+      .where("name", "=", "cover")
+      .executeTakeFirstOrThrow();
+    const entityType = await this.db
+      .selectFrom("entity_type")
+      .select("id")
+      .where("name", "=", "game")
+      .executeTakeFirstOrThrow();
+    await this.db
+      .insertInto("entity_media")
+      .values({
+        entity_id: gameId,
+        media_type_id: mediaType.id!,
+        entity_type_id: entityType.id!,
+        path,
+      })
+      .onConflict((oc) =>
+        oc
+          .columns(["entity_id", "media_type_id", "entity_type_id"])
+          .doUpdateSet({ path }),
+      )
+      .execute();
+  }
+
+  // Upsert hero image URL for a game
+  public async upsertHero(gameId: number, path: string): Promise<void> {
+    const mediaType = await this.db
+      .selectFrom("media_type")
+      .select("id")
+      .where("name", "=", "hero")
+      .executeTakeFirstOrThrow();
+    const entityType = await this.db
+      .selectFrom("entity_type")
+      .select("id")
+      .where("name", "=", "game")
+      .executeTakeFirstOrThrow();
+    await this.db
+      .insertInto("entity_media")
+      .values({
+        entity_id: gameId,
+        media_type_id: mediaType.id!,
+        entity_type_id: entityType.id!,
+        path,
+      })
+      .onConflict((oc) =>
+        oc
+          .columns(["entity_id", "media_type_id", "entity_type_id"])
+          .doUpdateSet({ path }),
+      )
+      .execute();
+  }
+
+  public async upsertLogo(gameId: number, path: string): Promise<void> {
+    const mediaType = await this.db
+      .selectFrom("media_type")
+      .select("id")
+      .where("name", "=", "logo")
+      .executeTakeFirstOrThrow();
+    const entityType = await this.db
+      .selectFrom("entity_type")
+      .select("id")
+      .where("name", "=", "game")
+      .executeTakeFirstOrThrow();
+    await this.db
+      .insertInto("entity_media")
+      .values({
+        entity_id: gameId,
+        media_type_id: mediaType.id!,
+        entity_type_id: entityType.id!,
+        path,
+      })
+      .onConflict((oc) =>
+        oc
+          .columns(["entity_id", "media_type_id", "entity_type_id"])
+          .doUpdateSet({ path }),
       )
       .execute();
   }

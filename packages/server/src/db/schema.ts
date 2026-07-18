@@ -5,9 +5,10 @@
 
 import type { ColumnType } from "kysely";
 
-export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
-  ? ColumnType<S, I | undefined, U>
-  : ColumnType<T, T | undefined, T>;
+export type Generated<T> =
+  T extends ColumnType<infer S, infer I, infer U>
+    ? ColumnType<S, I | undefined, U>
+    : ColumnType<T, T | undefined, T>;
 
 export interface _Migrations {
   applied_at: Generated<string>;
@@ -274,6 +275,7 @@ export interface GameGridView {
   display_title: string | null;
   hltb_main_min: number | null;
   id: number | null;
+  launch_target: string | null;
   release_date: string | null;
   size_bytes: number | null;
   sort_title: string | null;
@@ -289,6 +291,8 @@ export interface GameListView {
   display_title: string | null;
   hltb_main_min: number | null;
   id: number | null;
+  launch_target: string | null;
+  libraries: string | null;
   release_date: string | null;
   size_bytes: number | null;
   sort_title: string | null;

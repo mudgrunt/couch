@@ -168,7 +168,7 @@ CREATE TABLE game (
     hltb_main_extra_min INTEGER CHECK (hltb_main_extra_min >= 0),
     hltb_completionist_min INTEGER CHECK (hltb_completionist_min >= 0),
     sort_title TEXT GENERATED ALWAYS AS (
-        CASE
+        LOWER(CASE
             WHEN LOWER(COALESCE(display_title, title)) LIKE 'the %'
                 THEN TRIM(SUBSTR(COALESCE(display_title, title), 5))
             WHEN LOWER(COALESCE(display_title, title)) LIKE 'an %'
@@ -176,7 +176,7 @@ CREATE TABLE game (
             WHEN LOWER(COALESCE(display_title, title)) LIKE 'a %'
                 THEN TRIM(SUBSTR(COALESCE(display_title, title), 3))
             ELSE COALESCE(display_title, title)
-        END
+        END)
     ) STORED,
     updated_by INTEGER REFERENCES account(id) ON DELETE SET NULL,
     deleted_by INTEGER REFERENCES account(id) ON DELETE SET NULL,
@@ -650,6 +650,8 @@ SELECT
     g.release_date,
     g.size_bytes,
     g.hltb_main_min,
+    g.launch_target,
+    g.install_dir,
     (
         SELECT em.path
         FROM entity_media em
@@ -670,7 +672,15 @@ SELECT
     g.sort_title,
     g.release_date,
     g.size_bytes,
-    g.hltb_main_min
+    g.hltb_main_min,
+    g.launch_target,
+    g.install_dir,
+    (
+        SELECT GROUP_CONCAT(l.name, ', ')
+        FROM game_library gl
+        JOIN library l ON gl.library_id = l.id
+        WHERE gl.game_id = g.id
+    ) AS libraries
 FROM game g
 WHERE g.deleted_at IS NULL;
 

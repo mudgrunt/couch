@@ -182,4 +182,79 @@ export class LookupRepository {
       .orderBy("tag.name")
       .execute();
   }
+
+  // Find or Create helpers (used by enrichment services)
+
+  public async findOrCreateGenre(name: string): Promise<number> {
+    await this.db
+      .insertInto("genre")
+      .values({ name })
+      .onConflict((oc) => oc.column("name").doNothing())
+      .execute();
+    const row = await this.db
+      .selectFrom("genre")
+      .select("id")
+      .where("name", "=", name)
+      .executeTakeFirstOrThrow();
+    return row.id;
+  }
+
+  public async findOrCreateDeveloper(name: string): Promise<number> {
+    await this.db
+      .insertInto("developer")
+      .values({ name })
+      .onConflict((oc) => oc.column("name").doNothing())
+      .execute();
+    const row = await this.db
+      .selectFrom("developer")
+      .select("id")
+      .where("name", "=", name)
+      .executeTakeFirstOrThrow();
+    return row.id;
+  }
+
+  public async findOrCreatePublisher(name: string): Promise<number> {
+    await this.db
+      .insertInto("publisher")
+      .values({ name })
+      .onConflict((oc) => oc.column("name").doNothing())
+      .execute();
+    const row = await this.db
+      .selectFrom("publisher")
+      .select("id")
+      .where("name", "=", name)
+      .executeTakeFirstOrThrow();
+    return row.id;
+  }
+
+  public async findOrCreateFeature(name: string): Promise<number> {
+    await this.db
+      .insertInto("feature")
+      .values({ name })
+      .onConflict((oc) => oc.column("name").doNothing())
+      .execute();
+    const row = await this.db
+      .selectFrom("feature")
+      .select("id")
+      .where("name", "=", name)
+      .executeTakeFirstOrThrow();
+    return row.id;
+  }
+
+  public async findOrCreatePlatform(
+    code: string,
+    name: string,
+  ): Promise<number> {
+    await this.db
+      .insertInto("platform")
+      .values({ code, name })
+      .onConflict((oc) => oc.column("code").doNothing())
+      .execute();
+    const row = await this.db
+      .selectFrom("platform")
+      .select("id")
+      .where("code", "=", code)
+      .executeTakeFirstOrThrow();
+    return row.id;
+  }
 }

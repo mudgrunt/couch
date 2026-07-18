@@ -8,4 +8,5 @@ INSERT OR IGNORE INTO library (id, code, name) VALUES
 (7, 'xbox', 'Xbox'),
 (8, 'rockstar', 'Rockstar Games'),
 (9, 'amazon', 'Amazon Games'),
-(10, 'itch', 'Itch.io');
+(10, 'itch', 'Itch.io'),
+(11, 'local', 'Local');

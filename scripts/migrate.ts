@@ -84,6 +84,18 @@ export const umzug = new Umzug({
 export async function runMigrations() {
   await backupDatabase(config.dbPath);
   await umzug.up();
+  await runSeeds();
+}
+
+async function runSeeds() {
+  const seedsDir = path.join(__dirname, "../packages/server/src/db/seeds/prod");
+  const files = (await fs.readdir(seedsDir))
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+  for (const file of files) {
+    const sql = await fs.readFile(path.join(seedsDir, file), "utf-8");
+    sqlite.exec(sql);
+  }
 }
 
 // CLI runner when executed directly
