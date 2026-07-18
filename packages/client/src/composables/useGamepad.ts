@@ -1,262 +1,337 @@
 import { onMounted, onUnmounted } from 'vue'
-import { SpatialNavigation } from '@noriginmedia/norigin-spatial-navigation-core'
 
-export type Direction = 'up' | 'down' | 'left' | 'right'
-export type ActionButton = 'confirm' | 'back'
+export type ControllerType = 'xbox' | 'playstation' | 'nintendo' | 'steam' | 'generic'
 
-export interface GamepadHandlers {
-  onAction?: (btn: ActionButton) => void
-  onScroll?: (dx: number, dy: number) => void
+export const StandardButton = {
+  SOUTH: 0,
+  EAST: 1,
+  WEST: 2,
+  NORTH: 3,
+  LB: 4,
+  RB: 5,
+  LT: 6,
+  RT: 7,
+  SELECT: 8,
+  START: 9,
+  L3: 10,
+  R3: 11,
+  DPAD_UP: 12,
+  DPAD_DOWN: 13,
+  DPAD_LEFT: 14,
+  DPAD_RIGHT: 15,
+  HOME: 16,
+} as const
+
+export type StandardButtonName = keyof typeof StandardButton
+
+export const StandardAxis = {
+  LEFT_X: 0,
+  LEFT_Y: 1,
+  RIGHT_X: 2,
+  RIGHT_Y: 3,
+} as const
+
+export type StandardAxisName = keyof typeof StandardAxis
+
+// precomputed O(1) reverse lookups
+const BUTTON_NAME_MAP: (StandardButtonName | 'UNKNOWN')[] = Array(17).fill('UNKNOWN')
+Object.entries(StandardButton).forEach(([name, index]) => {
+  BUTTON_NAME_MAP[index] = name as StandardButtonName
+})
+
+const AXIS_NAME_MAP: (StandardAxisName | 'UNKNOWN')[] = Array(4).fill('UNKNOWN')
+Object.entries(StandardAxis).forEach(([name, index]) => {
+  AXIS_NAME_MAP[index] = name as StandardAxisName
+})
+
+const resolveButtonName = (index: number): StandardButtonName | 'UNKNOWN' =>
+  BUTTON_NAME_MAP[index] ?? 'UNKNOWN'
+
+const resolveAxisName = (index: number): StandardAxisName | 'UNKNOWN' =>
+  AXIS_NAME_MAP[index] ?? 'UNKNOWN'
+
+const ANALOG_BUTTONS = new Set<number>([StandardButton.LT, StandardButton.RT])
+
+const DEADZONE = 0.1
+const CHANGE_THRESHOLD = 0.05
+const TRIGGER_THRESHOLD = 0.02
+
+export interface GamepadButtonState {
+  pressed: boolean
+  value: number
 }
 
-// rAF is the correct poll mechanism: the browser refreshes gamepad state
-// synchronously before each rAF callback. setInterval can stack up when the
-// main thread is busy, causing the same state to be read multiple times.
-const INITIAL_DELAY = 300
-const REPEAT_INTERVAL = 80
-const STICK_PRESS_THRESHOLD = 0.65
-const STICK_RELEASE_THRESHOLD = 0.35
-const BUTTON_PRESS_THRESHOLD = 0.5
-// Right stick: ignore small deflections to avoid drift noise, scale px/frame
-const SCROLL_DEADZONE = 0.12
-const SCROLL_SPEED = 20
-
-const ALL_DIRS: Direction[] = ['up', 'down', 'left', 'right']
-const ALL_ACTIONS: ActionButton[] = ['confirm', 'back']
-
-function isButtonPressed(gp: Gamepad, index: number): boolean {
-  const button = gp.buttons[index]
-  return Boolean(button?.pressed || (button?.value ?? 0) >= BUTTON_PRESS_THRESHOLD)
+export interface GamepadConnectEvent {
+  gamepadIndex: number
+  gamepad: Gamepad
+  type: ControllerType
 }
 
-function getAxisDirection(value: number, negativeWasActive: boolean, positiveWasActive: boolean) {
-  const negativeActive = negativeWasActive
-    ? value <= -STICK_RELEASE_THRESHOLD
-    : value <= -STICK_PRESS_THRESHOLD
-  const positiveActive = positiveWasActive
-    ? value >= STICK_RELEASE_THRESHOLD
-    : value >= STICK_PRESS_THRESHOLD
-
-  return {
-    negativeActive,
-    positiveActive,
-  }
+export interface GamepadDisconnectEvent {
+  gamepadIndex: number
 }
 
-function getActiveDirections(gp: Gamepad, prevDirs: Map<Direction, boolean>): Set<Direction> {
-  const dirs = new Set<Direction>()
-
-  if (isButtonPressed(gp, 12)) dirs.add('up')
-  if (isButtonPressed(gp, 13)) dirs.add('down')
-  if (isButtonPressed(gp, 14)) dirs.add('left')
-  if (isButtonPressed(gp, 15)) dirs.add('right')
-
-  if (dirs.size > 0) return dirs
-
-  const ax = gp.axes[0] ?? 0
-  const ay = gp.axes[1] ?? 0
-
-  const horizontal = getAxisDirection(
-    ax,
-    prevDirs.get('left') ?? false,
-    prevDirs.get('right') ?? false,
-  )
-  const vertical = getAxisDirection(ay, prevDirs.get('up') ?? false, prevDirs.get('down') ?? false)
-
-  const horizontalMagnitude = Math.abs(ax)
-  const verticalMagnitude = Math.abs(ay)
-
-  if (
-    !horizontal.negativeActive &&
-    !horizontal.positiveActive &&
-    !vertical.negativeActive &&
-    !vertical.positiveActive
-  ) {
-    return dirs
-  }
-
-  // Treat the left stick as one navigation source. This avoids diagonal drift or
-  // slight off-axis deflection producing two direction presses in the same frame.
-  if (horizontalMagnitude >= verticalMagnitude) {
-    if (horizontal.negativeActive) dirs.add('left')
-    else if (horizontal.positiveActive) dirs.add('right')
-    else if (vertical.negativeActive) dirs.add('up')
-    else if (vertical.positiveActive) dirs.add('down')
-  } else {
-    if (vertical.negativeActive) dirs.add('up')
-    else if (vertical.positiveActive) dirs.add('down')
-    else if (horizontal.negativeActive) dirs.add('left')
-    else if (horizontal.positiveActive) dirs.add('right')
-  }
-
-  return dirs
+export interface GamepadButtonEvent {
+  gamepadIndex: number
+  buttonIndex: number
+  button: StandardButtonName | 'UNKNOWN'
+  pressed: boolean
+  value: number
 }
 
-function dispatchSpatialKey(type: 'keydown' | 'keyup', key: string, code: string, keyCode: number) {
-  const event = new KeyboardEvent(type, {
-    key,
-    code,
-    bubbles: true,
-    cancelable: true,
-  })
-
-  for (const [name, value] of [
-    ['keyCode', keyCode],
-    ['which', keyCode],
-  ] as const) {
-    Object.defineProperty(event, name, {
-      configurable: true,
-      enumerable: true,
-      get: () => value,
-    })
-  }
-
-  window.dispatchEvent(event)
+export interface GamepadAxisEvent {
+  gamepadIndex: number
+  axisIndex: number
+  axis: StandardAxisName | 'UNKNOWN'
+  value: number
 }
 
-function resolveActiveGamepad(currentIndex: number | null): Gamepad | null {
-  const gamepads = navigator.getGamepads()
-
-  if (currentIndex !== null) {
-    const active = gamepads[currentIndex]
-    if (active?.connected) return active
-  }
-
-  for (const gp of gamepads) {
-    if (gp?.connected) return gp
-  }
-
-  return null
+export interface GamepadSnapshotEvent {
+  gamepadIndex: number
+  axes: number[]
+  buttons: GamepadButtonState[]
+  timestamp: number
 }
 
-export function useGamepad(handlers: GamepadHandlers) {
-  let rafId: number
-  let activeGamepadIndex: number | null = null
+export function useGamepad() {
+  let rafId: number | null = null
   let isPolling = false
-  // Explicit previous-frame state — true rising-edge detection
-  const prevDirs = new Map<Direction, boolean>()
-  const prevActions = new Map<ActionButton, boolean>()
-  // Hold-repeat timing
-  const pressedAt = new Map<Direction, number>()
-  const lastFired = new Map<Direction, number>()
 
-  function poll(now: number) {
-    const gamepad = resolveActiveGamepad(activeGamepadIndex)
+  const prevButtons = new Map<number, GamepadButtonState[]>()
+  const prevAxes = new Map<number, number[]>()
 
-    if (!gamepad) {
-      for (const dir of ALL_DIRS) {
-        prevDirs.set(dir, false)
+  const connectHandlers = new Set<(e: GamepadConnectEvent) => void>()
+  const disconnectHandlers = new Set<(e: GamepadDisconnectEvent) => void>()
+  const buttonHandlers = new Set<(e: GamepadButtonEvent) => void>()
+  const axisHandlers = new Set<(e: GamepadAxisEvent) => void>()
+  const snapshotHandlers = new Set<(e: GamepadSnapshotEvent) => void>()
+
+  const onConnect = (h: (e: GamepadConnectEvent) => void) => {
+    connectHandlers.add(h)
+    return () => connectHandlers.delete(h)
+  }
+
+  const onDisconnect = (h: (e: GamepadDisconnectEvent) => void) => {
+    disconnectHandlers.add(h)
+    return () => disconnectHandlers.delete(h)
+  }
+
+  const onButton = (
+    handler: (e: GamepadButtonEvent) => void,
+    options?: {
+      button?: StandardButtonName | StandardButtonName[]
+      pressed?: boolean
+    },
+  ) => {
+    const filtered = (e: GamepadButtonEvent) => {
+      if (options?.button) {
+        const buttons = Array.isArray(options.button) ? options.button : [options.button]
+        if (!buttons.includes(e.button as StandardButtonName)) return
       }
-      for (const btn of ALL_ACTIONS) {
-        prevActions.set(btn, false)
+      if (options?.pressed !== undefined && e.pressed !== options.pressed) return
+      handler(e)
+    }
+    buttonHandlers.add(filtered)
+    return () => buttonHandlers.delete(filtered)
+  }
+
+  const onAxis = (
+    handler: (e: GamepadAxisEvent) => void,
+    options?: {
+      axis?: StandardAxisName | StandardAxisName[]
+    },
+  ) => {
+    const filtered = (e: GamepadAxisEvent) => {
+      if (options?.axis) {
+        const axes = Array.isArray(options.axis) ? options.axis : [options.axis]
+        if (!axes.includes(e.axis as StandardAxisName)) return
       }
-      rafId = requestAnimationFrame(poll)
-      return
+      handler(e)
     }
+    axisHandlers.add(filtered)
+    return () => axisHandlers.delete(filtered)
+  }
 
-    activeGamepadIndex = gamepad.index
+  const onSnapshot = (h: (e: GamepadSnapshotEvent) => void) => {
+    snapshotHandlers.add(h)
+    return () => snapshotHandlers.delete(h)
+  }
 
-    const activeActions = new Set<ActionButton>()
-    const activeDirs = getActiveDirections(gamepad, prevDirs)
-    let scrollX = 0
-    let scrollY = 0
+  const detectControllerType = (gamepad: Gamepad): ControllerType => {
+    const id = gamepad.id.toLowerCase()
+    if (id.includes('28de') || id.includes('valve') || id.includes('steam')) return 'steam'
+    if (id.includes('045e') || id.includes('xbox')) return 'xbox'
+    if (
+      id.includes('054c') ||
+      id.includes('dualsense') ||
+      id.includes('dualshock') ||
+      id.includes('sony') ||
+      id.includes('playstation')
+    )
+      return 'playstation'
+    if (
+      id.includes('057e') ||
+      id.includes('switch') ||
+      id.includes('pro controller') ||
+      id.includes('joy-con') ||
+      id.includes('nintendo')
+    )
+      return 'nintendo'
+    return 'generic'
+  }
 
-    if (isButtonPressed(gamepad, 0)) activeActions.add('confirm')
-    if (isButtonPressed(gamepad, 1)) activeActions.add('back')
+  const initGamepadState = (gamepad: Gamepad) => {
+    prevButtons.set(
+      gamepad.index,
+      gamepad.buttons.map((b) => ({ pressed: b.pressed, value: b.value })),
+    )
+    prevAxes.set(
+      gamepad.index,
+      [...gamepad.axes].map((v) => (Math.abs(v) < DEADZONE ? 0 : v)),
+    )
+  }
 
-    // Right stick: axes 2 (X) and 3 (Y)
-    const rx = gamepad.axes[2] ?? 0
-    const ry = gamepad.axes[3] ?? 0
-    if (Math.abs(rx) > SCROLL_DEADZONE) scrollX = rx
-    if (Math.abs(ry) > SCROLL_DEADZONE) scrollY = ry
+  const poll = (timestamp: number) => {
+    // self-check — exits cleanly if blur fired mid-frame
+    if (!isPolling) return
 
-    if (scrollX !== 0 || scrollY !== 0) {
-      handlers.onScroll?.(scrollX * SCROLL_SPEED, scrollY * SCROLL_SPEED)
-    }
+    const gamepads = navigator.getGamepads()
 
-    // Directions: fire on rising edge, then hold-repeat after initial delay
-    for (const dir of ALL_DIRS) {
-      const isDown = activeDirs.has(dir)
-      const wasDown = prevDirs.get(dir) ?? false
+    for (const gamepad of gamepads) {
+      if (!gamepad) continue
+      if (gamepad.mapping !== 'standard') continue
 
-      if (isDown && !wasDown) {
-        // Rising edge — fire immediately
-        pressedAt.set(dir, now)
-        lastFired.set(dir, now)
-        SpatialNavigation.navigateByDirection(dir)
-      } else if (isDown && wasDown) {
-        // Held — fire repeat once past initial delay
-        const pt = pressedAt.get(dir) ?? now
-        if (now - pt >= INITIAL_DELAY) {
-          const lf = lastFired.get(dir) ?? now
-          if (now - lf >= REPEAT_INTERVAL) {
-            lastFired.set(dir, now)
-            SpatialNavigation.navigateByDirection(dir)
-          }
+      // cold boot defensive guard — initialize with real hardware state
+      if (!prevButtons.has(gamepad.index)) {
+        initGamepadState(gamepad)
+      }
+
+      const prevButtons_ = prevButtons.get(gamepad.index)!
+      const prevAxes_ = prevAxes.get(gamepad.index)!
+
+      // --- button diffing ---
+      const currentButtons: GamepadButtonState[] = gamepad.buttons.map((b) => ({
+        pressed: b.pressed,
+        value: b.value,
+      }))
+
+      currentButtons.forEach(({ pressed, value }, buttonIndex) => {
+        const prev = prevButtons_[buttonIndex]
+        const isAnalog = ANALOG_BUTTONS.has(buttonIndex)
+
+        const pressedChanged = pressed !== prev?.pressed
+        const valueChanged =
+          isAnalog && (pressedChanged || Math.abs(value - (prev?.value ?? 0)) > TRIGGER_THRESHOLD)
+
+        if (pressedChanged || valueChanged) {
+          buttonHandlers.forEach((h) =>
+            h({
+              gamepadIndex: gamepad.index,
+              buttonIndex,
+              button: resolveButtonName(buttonIndex),
+              pressed,
+              value,
+            }),
+          )
         }
-      } else if (!isDown && wasDown) {
-        // Falling edge — clean up
-        pressedAt.delete(dir)
-        lastFired.delete(dir)
-      }
+      })
 
-      prevDirs.set(dir, isDown)
-    }
+      prevButtons.set(gamepad.index, currentButtons)
 
-    // Actions: fire exactly once on rising edge, no repeat
-    for (const btn of ALL_ACTIONS) {
-      const isDown = activeActions.has(btn)
-      const wasDown = prevActions.get(btn) ?? false
-      if (isDown && !wasDown) {
-        if (btn === 'confirm') {
-          dispatchSpatialKey('keydown', 'Enter', 'Enter', 13)
+      // --- axis diffing ---
+      const currentAxes = [...gamepad.axes]
+      const processedAxes: number[] = []
+
+      currentAxes.forEach((value, axisIndex) => {
+        const deadzonedValue = Math.abs(value) < DEADZONE ? 0 : value
+        const prevProcessed = prevAxes_[axisIndex] ?? 0
+
+        if (Math.abs(deadzonedValue - prevProcessed) > CHANGE_THRESHOLD) {
+          axisHandlers.forEach((h) =>
+            h({
+              gamepadIndex: gamepad.index,
+              axisIndex,
+              axis: resolveAxisName(axisIndex),
+              value: deadzonedValue,
+            }),
+          )
         }
-        handlers.onAction?.(btn)
-      } else if (!isDown && wasDown && btn === 'confirm') {
-        dispatchSpatialKey('keyup', 'Enter', 'Enter', 13)
-      }
 
-      prevActions.set(btn, isDown)
+        processedAxes.push(deadzonedValue)
+      })
+
+      prevAxes.set(gamepad.index, processedAxes)
+
+      // --- snapshot — always emit, consumer decides ---
+      snapshotHandlers.forEach((h) =>
+        h({
+          gamepadIndex: gamepad.index,
+          axes: currentAxes,
+          buttons: currentButtons,
+          timestamp,
+        }),
+      )
     }
 
     rafId = requestAnimationFrame(poll)
   }
 
-  onMounted(() => {
-    resume()
-    window.addEventListener('blur', pause)
-    window.addEventListener('focus', resume)
-  })
-
-  onUnmounted(() => {
-    pause()
-    window.removeEventListener('blur', pause)
-    window.removeEventListener('focus', resume)
-  })
-
-  function pause() {
-    if (!isPolling) {
-      activeGamepadIndex = null
-      prevDirs.clear()
-      prevActions.clear()
-      pressedAt.clear()
-      lastFired.clear()
-      return
-    }
-
-    cancelAnimationFrame(rafId)
-    isPolling = false
-    activeGamepadIndex = null
-    prevDirs.clear()
-    prevActions.clear()
-    pressedAt.clear()
-    lastFired.clear()
+  const handleConnect = (e: GamepadEvent) => {
+    if (e.gamepad.mapping !== 'standard') return
+    const type = detectControllerType(e.gamepad)
+    initGamepadState(e.gamepad)
+    connectHandlers.forEach((h) => h({ gamepadIndex: e.gamepad.index, gamepad: e.gamepad, type }))
   }
 
-  function resume() {
-    if (isPolling) return
+  const handleDisconnect = (e: GamepadEvent) => {
+    prevButtons.delete(e.gamepad.index)
+    prevAxes.delete(e.gamepad.index)
+    disconnectHandlers.forEach((h) => h({ gamepadIndex: e.gamepad.index }))
+  }
 
+  const handleBlur = () => {
+    if (rafId !== null) cancelAnimationFrame(rafId)
+    rafId = null
+    isPolling = false
+    prevButtons.clear()
+    prevAxes.clear()
+  }
+
+  const handleFocus = () => {
+    if (isPolling) return
     isPolling = true
     rafId = requestAnimationFrame(poll)
+  }
+
+  const start = () => {
+    window.addEventListener('gamepadconnected', handleConnect)
+    window.addEventListener('gamepaddisconnected', handleDisconnect)
+    window.addEventListener('blur', handleBlur)
+    window.addEventListener('focus', handleFocus)
+    isPolling = true
+    rafId = requestAnimationFrame(poll)
+  }
+
+  const stop = () => {
+    window.removeEventListener('gamepadconnected', handleConnect)
+    window.removeEventListener('gamepaddisconnected', handleDisconnect)
+    window.removeEventListener('blur', handleBlur)
+    window.removeEventListener('focus', handleFocus)
+    if (rafId !== null) cancelAnimationFrame(rafId)
+    rafId = null
+    isPolling = false
+    prevButtons.clear()
+    prevAxes.clear()
+  }
+
+  onMounted(start)
+  onUnmounted(stop)
+
+  return {
+    onConnect,
+    onDisconnect,
+    onButton,
+    onAxis,
+    onSnapshot,
   }
 }
