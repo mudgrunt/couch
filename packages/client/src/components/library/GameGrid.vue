@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { provide, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import GameCard from './GameCard.vue'
-import { useFocusable, FocusContextKey } from '../../composables/useFocusable'
-import { useGamepad } from '../../composables/useGamepad'
+import { useFocusable } from '../../composables/useFocusable'
+import { provideFocusContext } from '../../composables/useFocusContext'
+import { useGamepad } from '../../composables/input/useGamepad.ts'
 
 defineProps<{ games: Record<string, unknown>[] }>()
 
 const { ref: gridRef, focusKey, focusSelf } = useFocusable({ trackChildren: true })
-provide(FocusContextKey, focusKey)
+
+provideFocusContext(focusKey)
 
 onMounted(() => focusSelf())
 
