@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import { prefetchGame } from '../../composables/useGameCache'
-import { useFocusable } from '../../composables/useFocusable'
+import { prefetchGame } from '../../composables/ui/useGameCache'
+import { useFocusable } from '../../composables/nav/useFocusable'
 
 const props = defineProps<{ game: Record<string, unknown> }>()
 const router = useRouter()

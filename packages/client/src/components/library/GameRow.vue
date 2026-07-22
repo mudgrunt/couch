@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { prefetchGame } from '../../composables/useGameCache'
+import { prefetchGame } from '../../composables/ui/useGameCache'
 
 const props = defineProps<{ game: Record<string, unknown> }>()
 const router = useRouter()

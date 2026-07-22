@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import GameCard from './GameCard.vue'
-import { useFocusable } from '../../composables/useFocusable'
-import { provideFocusContext } from '../../composables/useFocusContext'
+import { useFocusable } from '../../composables/nav/useFocusable.ts'
+import { provideFocusContext } from '../../composables/nav/useFocusContext.ts'
 import { useGamepad } from '../../composables/input/useGamepad.ts'
 
 defineProps<{ games: Record<string, unknown>[] }>()

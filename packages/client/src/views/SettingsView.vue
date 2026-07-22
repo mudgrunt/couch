@@ -1,6 +1,6 @@
 ﻿<script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { useToolbar } from '../composables/useToolbar'
+import { useToolbar } from '../composables/ui/useToolbar'
 
 interface Settings {
   steamPath?: string

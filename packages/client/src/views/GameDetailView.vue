@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getGameFromCache } from '../composables/useGameCache'
-import { useToolbar } from '../composables/useToolbar'
+import { getGameFromCache } from '../composables/ui/useGameCache'
+import { useToolbar } from '../composables/ui/useToolbar'
 
 const route = useRoute()
 const router = useRouter()
